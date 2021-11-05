@@ -1,39 +1,13 @@
-"""
-1. Реализовать простое клиент-серверное взаимодействие по протоколу JIM (JSON instant messaging):
-клиент отправляет запрос серверу;
-сервер отвечает соответствующим кодом результата.
-Клиент и сервер должны быть реализованы в виде отдельных скриптов, содержащих соответствующие функции.
-Функции клиента:
-    сформировать presence-сообщение;
-    отправить сообщение серверу;
-    получить ответ сервера;
-    разобрать сообщение сервера;
-    параметры командной строки скрипта client.py <addr> [<port>]:
-    addr — ip-адрес сервера;
-    port — tcp-порт на сервере, по умолчанию 7777.
-Функции сервера:
-    принимает сообщение клиента;
-    формирует ответ клиенту;
-    отправляет ответ клиенту;
-    имеет параметры командной строки:
-    -p <port> — TCP-порт для работы (по умолчанию использует 7777);
-    -a <addr> — IP-адрес для прослушивания (по умолчанию слушает все доступные адреса).
-
-Задание:
-1.) Изменить имена переменных и функций в предоставленном скрипте (чем больше, тем лучше);
-2.) Изменить порядок пары ip_адрес-порт на порт-ip_адрес : <port> [<addr>]:
-3.) Добавить в сообщение от клиента номер порта, по которому запрашиватеся соединение, например:
-{'action': 'presence', 'time': 1634873801.598524, 'port': 9000, 'user': {'account_name': 'Guest'}}
-"""
-
+import logging
 import socket
 import argparse
 import json
-import time
 import server_statuses as status
 from server_handlers import ACTION
 from server_exceptions import WrongMethod
+import log.server_log_config
 
+logger = logging.getLogger('server')
 
 def parse_message(data, client):
     try:
@@ -51,7 +25,7 @@ def parse_message(data, client):
         res = status.http_400_param_error(e)
     except WrongMethod as e:
         res = status.http_400_method_param(e)
-
+    logger.info(f'При обработке запроса произошла ошибка: {res["error"]}')
     client.send(json.dumps(res).encode('ascii'))
 
 
@@ -62,16 +36,21 @@ parser.add_argument('-a', type=str, default='', help='server address', required=
 arg = parser.parse_args()
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind((arg.a, arg.p))
+try:
+    s.bind((arg.a, arg.p))
+except OSError as e:
+    logger.info(f'{e} on {arg.a}:{arg.p}')
+    exit()
 s.listen(5)
 
-print(f'Сервер запущен по порту {arg.p} для \'{arg.a}\'')
+logger.info(f'Сервер запущен по порту {arg.p} для \'{arg.a}\'')
 
 try:
     while True:
         client, addr = s.accept()
-        print("Получен запрос на соединение от %s" % str(addr))
+        logger.info(f'Получен запрос на соединение от {addr}')
         data = client.recv(4096)
+        logger.debug(f'Данные от клиента {addr}: {data.decode()}')
         parse_message(data, client)
         client.close()
 finally:
