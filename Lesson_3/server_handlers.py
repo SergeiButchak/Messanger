@@ -1,12 +1,29 @@
 import json
 import time
+import inspect
+import logging
+from functools import wraps
 import server_statuses as status
+import log.server_log_config
 
 
+def log(func):
+    @wraps(func)
+    def call(*args, **kwargs):
+        logger = logging.getLogger('server')
+        upper_func = inspect.stack()[1][3]
+        logger.info(f'Вызов функции {func.__name__} из {upper_func}')
+        logger.debug(f'Функция {func.__name__}, args:{args}, kwargs: {kwargs}')
+        return func(*args, **kwargs)
+    return call
+
+
+@log
 def authenticate(data, client):
     pass
 
 
+@log
 def presence(data, client):
 
     res = status.http_200(f'{data["user"]["account_name"]} has joined to the server')
@@ -14,6 +31,7 @@ def presence(data, client):
     client.send(msg.encode('ascii'))
 
 
+@log
 def quit_server(data, client):
 
     res = status.http_200(f'{data["user"]["account_name"]} has left the server')
@@ -21,6 +39,7 @@ def quit_server(data, client):
     client.send(msg.encode('ascii'))
 
 
+@log
 def join_chat(data, client):
     pass
 
@@ -29,6 +48,7 @@ def leave_chat(data, client):
     pass
 
 
+@log
 def send_message(data, client):
     pass
 
