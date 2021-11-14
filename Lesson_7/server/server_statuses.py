@@ -35,3 +35,13 @@ def http_200(msg):
     res['alert'] = f'{msg}'
 
     return res
+
+
+def client_message(user, msg):
+    res = dict()
+    res['action'] = 'message'
+    res['time'] = time.time()
+    res['account_name'] = user
+    res['mess_text'] = msg
+
+    return res

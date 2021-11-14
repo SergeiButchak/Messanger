@@ -1,13 +1,8 @@
 import logging
-import time
 import select
 import socket
 import argparse
-import json
-import server_statuses as status
-from server_handlers import ACTION
-from server_exceptions import WrongMethod
-import log.server_log_config
+from server.server_handlers import parse_message
 
 logger = logging.getLogger('server')
 
@@ -17,56 +12,86 @@ def new_socket(address, port):
     try:
         s.bind((address, port))
         s.listen(5)
-        s.settimeout(0.2)
+        s.settimeout(0.5)
         return s
     except OSError as e:
-        logger.info(f'{e} on {arg.a}:{arg.p}')
+        logger.info(f'{e} on {address}:{port}')
         return None
 
 
-def parse_message(data, client):
-    try:
-        msg = json.loads(data.decode('ascii'))
-        act = msg['action']
-        try:
-            method = ACTION[act]
-        except KeyError as e:
-            raise WrongMethod(e)
-        method(msg, client)
-        return
-    except json.decoder.JSONDecodeError:
-        res = status.http_400_parse_error()
-    except KeyError as e:
-        res = status.http_400_param_error(e)
-    except WrongMethod as e:
-        res = status.http_400_method_param(e)
-    logger.info(f'При обработке запроса произошла ошибка: {res["error"]}')
-    client.send(json.dumps(res).encode('ascii'))
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', type=int, default=7777, help='server port', required=False)
+    parser.add_argument('-a', type=str, default='', help='server address', required=False)
+    arg = parser.parse_args()
 
+    s = new_socket(arg.a, arg.p)
 
+    if s is None:
+        exit()
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-p', type=int, default=7777, help='server port', required=False)
-parser.add_argument('-a', type=str, default='', help='server address', required=False)
-arg = parser.parse_args()
+    clients = []
+    logger.info(f'Сервер запущен по порту {arg.p} для \'{arg.a}\'')
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-try:
-    s.bind((arg.a, arg.p))
-except OSError as e:
-    logger.info(f'{e} on {arg.a}:{arg.p}')
-    exit()
-s.listen(5)
-
-logger.info(f'Сервер запущен по порту {arg.p} для \'{arg.a}\'')
-
-try:
     while True:
-        client, addr = s.accept()
-        logger.info(f'Получен запрос на соединение от {addr}')
-        data = client.recv(4096)
-        logger.debug(f'Данные от клиента {addr}: {data.decode()}')
-        parse_message(data, client)
-        client.close()
-finally:
-    s.close()
+        try:
+            client, client_address = s.accept()
+        except OSError:
+            pass
+        else:
+            logger.info(f'Установлено соединение с ПК {client_address}')
+            clients.append(client)
+
+        recv_data_list = []
+        send_data_list = []
+        err_list = []
+
+        try:
+            if clients:
+                recv_data_list, send_data_list, err_list = select.select(clients, clients, [], 0)
+        except OSError:
+            pass
+
+        if recv_data_list:
+            for r in recv_data_list:
+                try:
+                    data = r.recv(1024)
+                    parse_message(data, r, clients)
+                except:
+                    clients.remove(r)
+
+
+
+    # try:
+    #     while True:
+    #         try:
+    #             conn, addr = s.accept()
+    #         except OSError as e:
+    #             pass
+    #         else:
+    #             logger.info(f'Получен запрос на соединение от {addr}')
+    #             clients.append(conn)
+    #             data = conn.recv(4096)
+    #         finally:
+    #             recv_data_lst = []
+    #             send_data_lst = []
+    #             try:
+    #                 recv_data_lst, send_data_lst, e = select.select(clients, clients, [], 0)
+    #             except Exception as e:
+    #                 pass
+    #
+    #             if recv_data_lst:
+    #                 for r in recv_data_lst:
+    #                     try:
+    #                         data = r.recv(4096)
+    #                         logger.debug(f'Данные от клиента {r}: {data.decode()}')
+    #                         parse_message(data, r, send_data_lst)
+    #                     except ConnectionResetError as e:
+    #                         logger.error(e)
+    #
+    # finally:
+    #     s.close()
+
+
+if __name__ == '__main__':
+    main()
